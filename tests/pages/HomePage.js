@@ -33,14 +33,15 @@ class HomePage {
   }
 
   /**
-   * O blog adia o JavaScript do tema (LiteSpeed). Os scripts só rodam após uma
-   * interação real, e mesmo assim os bundles `_jb_static` (que atribuem o
-   * onclick da lupa) ficam em `data-src` sem carregar. Aqui acordamos o
-   * LiteSpeed, carregamos esses bundles e copiamos o handler para a lupa visível.
+   * Contorno do bug da lupa. O LiteSpeed só roda o JavaScript do site após
+   * uma interação, e mesmo assim os scripts `_jb_static` (que ligam o clique
+   * à lupa) ficam em `data-src` sem carregar. Aqui:
+   *   1. mexemos o mouse até o LiteSpeed rodar os scripts;
+   *   2. carregamos à mão os `_jb_static`.
    */
   async prepararBusca() {
-    // o Guest Mode do LiteSpeed pode recarregar a página depois do goto; se o
-    // movimento cair no documento antigo, o novo nunca acorda. Por isso repete.
+    // 1. o LiteSpeed pode recarregar a página logo após o goto e o movimento
+    //    cair na página antiga; por isso mexe o mouse até funcionar
     let x = 200;
     await expect(async () => {
       x = x === 200 ? 400 : 200;
@@ -54,38 +55,13 @@ class HomePage {
       );
     }).toPass({ timeout: 45_000 });
 
-    await this.page.evaluate(async () => {
-      const temHandler = () =>
-        [...document.querySelectorAll("a.astra-search-icon")].some(
-          (el) => typeof el.onclick === "function",
-        );
-      if (temHandler()) return;
-
-      const pendentes = [
-        ...document.querySelectorAll("script[data-src]"),
-      ].filter(
-        (n) =>
-          !n.src && (n.getAttribute("data-src") || "").includes("_jb_static"),
-      );
-      for (const node of pendentes) {
-        await new Promise((resolve) => {
-          const script = document.createElement("script");
-          script.src = node.getAttribute("data-src");
-          script.onload = script.onerror = resolve;
-          document.body.appendChild(script);
-        });
-      }
-    });
-
-    await this.page.waitForFunction(() => {
-      const icones = [...document.querySelectorAll("a.astra-search-icon")];
-      const fonte = icones.find((el) => typeof el.onclick === "function");
-      if (!fonte) return false;
-      icones.forEach((el) => {
-        if (typeof el.onclick !== "function") el.onclick = fonte.onclick;
-      });
-      return true;
-    });
+    // 2. carrega os scripts que o LiteSpeed deixou pendentes
+    const scriptsPendentes = await this.page
+      .locator('script[data-src*="_jb_static"]')
+      .evaluateAll((nos) => nos.map((no) => no.getAttribute("data-src")));
+    for (const url of scriptsPendentes) {
+      await this.page.addScriptTag({ url });
+    }
   }
 
   async abrirBusca() {

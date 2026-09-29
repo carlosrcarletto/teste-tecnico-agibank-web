@@ -252,7 +252,7 @@ Guarda **onde estão os elementos** (seletores) e **o que dá para fazer** na p�
 | `pesquisar(termo)` | Abre a busca, digita o termo e clica em pesquisar |
 | `fecharBuscaPeloTeclado()` | Aperta `Esc` e confere que a busca fechou |
 
-> **Por que existe o `prepararBusca()`?** É o contorno do [bug da lupa](#testse2ebug-lupaspecjs-demonstração-do-bug-da-lupa). O plugin LiteSpeed só carrega o JavaScript do site depois que o usuário interage, e mesmo assim os scripts `_jb_static`, que ligam o clique à lupa, nunca são carregados. O método mexe o mouse, espera o LiteSpeed rodar, **carrega à força** os scripts `_jb_static` pendentes e copia a ação de clique para a lupa visível. Sem ele, nenhum cenário de busca conseguiria abrir a lupa. **Se o site trocar de tema/plugin ou o bug for corrigido, este é o primeiro método a revisar.**
+> **Por que existe o `prepararBusca()`?** É o contorno do [bug da lupa](#testse2ebug-lupaspecjs-demonstração-do-bug-da-lupa). O plugin LiteSpeed só carrega o JavaScript do site depois que o usuário interage, e mesmo assim os scripts `_jb_static`, que ligam o clique à lupa, nunca são carregados. O método faz duas coisas: (1) mexe o mouse até o LiteSpeed rodar os scripts (repetindo, porque o LiteSpeed às vezes recarrega a página e o primeiro movimento se perde) e (2) **carrega à mão** os scripts `_jb_static` pendentes. Sem ele, nenhum cenário de busca conseguiria abrir a lupa. **Se o site trocar de tema/plugin ou o bug for corrigido, este é o primeiro método a revisar.**
 
 #### `tests/pages/SearchResultsPage.js`: página de resultados
 
