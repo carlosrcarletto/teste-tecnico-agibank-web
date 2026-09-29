@@ -21,11 +21,11 @@ class HomePage {
    * Usado no cenário que demonstra o bug da lupa.
    */
   async visitarSemContorno() {
-    await this.page.goto("/");
+    await this.page.goto("/", { timeout: 30_000 });
     await expect(this.lupa).toBeVisible();
     await this.page.mouse.move(200, 300);
     await this.page.mouse.move(400, 300);
-    await this.page.waitForLoadState("networkidle");
+    await this.page.waitForLoadState("networkidle", { timeout: 15_000 });
   }
 
   async lupaTemAcaoDeClique() {

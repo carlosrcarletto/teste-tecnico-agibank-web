@@ -12,6 +12,10 @@ test.describe("Bug conhecido: lupa não abre a busca", () => {
     { tag: "@bug" },
     async ({ page }) => {
       test.fail(true, "Bug conhecido no site: a lupa não abre a busca");
+      // Com test.fail() só o status "failed" conta como sucesso: se estourar o
+      // timeout do teste o status é "timedOut" e a pipeline quebra. Por isso
+      // cada espera abaixo tem timeout próprio e o teste tem folga.
+      test.setTimeout(90_000);
       test.info().annotations.push({
         type: "bug",
         description:
@@ -25,7 +29,7 @@ test.describe("Bug conhecido: lupa não abre a busca", () => {
       const temAcao = await home.lupaTemAcaoDeClique();
       await test.step(`Lupa tem ação de clique? ${temAcao ? "sim" : "não"}`, async () => {});
 
-      await home.lupa.click();
+      await home.lupa.click({ timeout: 10_000 });
       await page.waitForTimeout(2000); // tempo para o usuário perceber que nada abriu
       await evidencia(page, "Depois de clicar na lupa");
 
