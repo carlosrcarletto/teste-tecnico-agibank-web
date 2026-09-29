@@ -1,4 +1,8 @@
 {
   "termoComResultado": "cartão",
-  "termoSemResultado": "zzzxqy987termoinexistente"
+  "termoSemResultado": "zzzxqy987termoinexistente",
+  "termoVazio": "",
+  "termoSomenteEspacos": "   ",
+  "termoComHtml": "<script>alert(\"xss\")</script>",
+  "tamanhoTermoLongo": 300
 }

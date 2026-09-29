@@ -33,5 +33,19 @@ class SearchResultsPage {
     await expect(this.artigos).toHaveCount(0);
     await expect(this.mensagemSemResultado).toBeVisible();
   }
+
+  // Busca sem termo: o WordPress não filtra e lista os artigos mais recentes
+  async deveListarArtigosSemFiltro() {
+    await expect(this.page).toHaveURL(/[?&]s=/);
+    await expect(this.titulo).toBeVisible();
+    await expect(this.artigos.first()).toBeVisible();
+    await expect(this.mensagemSemResultado).toBeHidden();
+  }
+
+  // O termo deve aparecer como texto no título, nunca virar HTML de verdade
+  async deveExibirTermoComoTexto(termo) {
+    await expect(this.titulo).toContainText(termo);
+    await expect(this.titulo.locator("script")).toHaveCount(0);
+  }
 }
 module.exports = { SearchResultsPage };

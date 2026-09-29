@@ -3,12 +3,15 @@ const { HomePage } = require("../pages/HomePage");
 const { evidencia } = require("../support/evidencia");
 
 test.describe("Bug conhecido: lupa não abre a busca", () => {
-  // Este teste FALHA de propósito enquanto o bug existir no site.
-  // Quando passar, o site foi corrigido e dá para remover o prepararBusca().
+  // Falha esperada (test.fail): enquanto o bug existir o teste falha e o
+  // Playwright conta como sucesso. Se o site for corrigido, o teste passa e o
+  // Playwright acusa "Expected to fail, but passed": aí dá para remover o
+  // test.fail() e o prepararBusca().
   test(
     "usuário clica na lupa e o campo de pesquisa abre",
     { tag: "@bug" },
     async ({ page }) => {
+      test.fail(true, "Bug conhecido no site: a lupa não abre a busca");
       test.info().annotations.push({
         type: "bug",
         description:

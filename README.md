@@ -10,6 +10,14 @@ Ferramentas usadas:
 
 Este guia foi escrito para quem **nunca usou Playwright**. Siga as seções na ordem.
 
+**Resumo dos cenários** (detalhes na [seção 5.1](#51-detalhe-de-cada-arquivo)):
+
+| Tipo | Quantidade | Resultado atual |
+|---|---|---|
+| ✅ Positivos: o usuário faz o esperado e o site responde certo | 2 | Passam |
+| 🚫 Negativos: entradas inválidas ou inexistentes, o site deve lidar sem quebrar | 5 | Passam |
+| 🐞 Bug conhecido: a lupa não abre a busca para um usuário real | 1 | **Falha esperada** (`test.fail`), contada como sucesso |
+
 ---
 
 ## Sumário
@@ -83,18 +91,26 @@ O Playwright usa navegadores próprios, separados do Chrome instalado na sua má
 | `npx playwright test --ui` | Abre a interface visual do Playwright: escolher testes, ver passo a passo, repetir |
 | `npx playwright test tests/e2e/busca.spec.js` | Roda só um arquivo de teste |
 | `npx playwright test -g "não há artigos"` | Roda só os testes cujo nome contém o texto informado |
+| `npx playwright test --grep @positivo` | Roda só os cenários positivos (`@negativo` para os negativos, `@bug` para o bug) |
 | `npx playwright test --debug` | Roda em modo depuração, pausando a cada passo |
 | `npx playwright codegen https://blog.agibank.com.br/` | Abre o site e **gera código** conforme você clica, útil para descobrir seletores |
 
 Resultado esperado no terminal:
 
 ```
-Running 3 tests using 3 workers
-  ✓  [chromium] › e2e/busca.spec.js › encontra artigos quando o termo existe no blog
-  ✓  [chromium] › e2e/busca.spec.js › informa que não há artigos quando o termo não existe
-  ✓  [chromium] › e2e/busca.spec.js › abre a busca pela lupa e permite sair sem pesquisar
-  3 passed
+Running 8 tests using 4 workers
+  ✓  … › Cenários positivos › encontra artigos quando o termo existe no blog @positivo
+  ✓  … › Cenários positivos › abre a busca pela lupa e permite sair sem pesquisar @positivo
+  ✓  … › Cenários negativos › informa que não há artigos quando o termo não existe @negativo
+  ✓  … › Cenários negativos › pesquisa vazia não quebra a página e lista artigos sem filtro @negativo
+  ✓  … › Cenários negativos › pesquisa só com espaços se comporta como pesquisa vazia @negativo
+  ✓  … › Cenários negativos › termo com HTML é exibido como texto e não executa script @negativo
+  ✓  … › Cenários negativos › termo muito longo informa que não há artigos @negativo
+  ✘  … › Bug conhecido: lupa não abre a busca › usuário clica na lupa e o campo de pesquisa abre @bug
+  8 passed
 ```
+
+> O **✘ no teste `@bug` é normal**: ele falha de propósito e o Playwright o conta como sucesso (por isso aparece `8 passed`). Veja a explicação em [bug-lupa.spec.js](#testse2ebug-lupaspecjs-demonstração-do-bug-da-lupa).
 
 ---
 
@@ -146,8 +162,8 @@ teste-tecnico-agibank-web/
 │       └── playwright.yml      → pipeline CI/CD: roda os testes e publica o relatório
 ├── tests/
 │   ├── e2e/
-│   │   ├── busca.spec.js       → OS TESTES: cenários da pesquisa
-│   │   └── bug-lupa.spec.js    → cenário que demonstra o bug da lupa
+│   │   ├── busca.spec.js       → OS TESTES: cenários positivos e negativos da pesquisa
+│   │   └── bug-lupa.spec.js    → bug conhecido da lupa (falha esperada, test.fail)
 │   ├── pages/
 │   │   ├── HomePage.js         → ações na página inicial (abrir lupa, pesquisar…)
 │   │   └── SearchResultsPage.js→ verificações na página de resultados
@@ -176,13 +192,26 @@ Pastas **geradas automaticamente** (não versionadas, podem ser apagadas sem pro
 
 #### `tests/e2e/busca.spec.js`: os testes
 
-Arquivos terminados em **`.spec.js`** são os únicos que o Playwright executa como teste. Este contém três cenários:
+Arquivos terminados em **`.spec.js`** são os únicos que o Playwright executa como teste. Os cenários estão divididos em dois grupos, cada um com uma *tag* para rodar separadamente.
+
+**Cenários positivos (`@positivo`)**: o usuário faz o que se espera e o site deve responder corretamente.
 
 | Cenário | O que verifica |
 |---|---|
 | encontra artigos quando o termo existe no blog | Pesquisa “cartão”: a URL e o título mostram o termo e os artigos listados falam dele |
-| informa que não há artigos quando o termo não existe | Pesquisa um termo inventado: nenhum artigo e a mensagem “Lamentamos, mas nada foi encontrado…” |
 | abre a busca pela lupa e permite sair sem pesquisar | Abre a lupa, aperta `Esc` e confirma que continua na página inicial |
+
+**Cenários negativos (`@negativo`)**: o usuário digita algo inválido ou que não existe, e o site deve lidar com isso sem quebrar.
+
+| Cenário | Entrada | Comportamento esperado |
+|---|---|---|
+| informa que não há artigos quando o termo não existe | `zzzxqy987termoinexistente` | Nenhum artigo e a mensagem “Lamentamos, mas nada foi encontrado…” |
+| pesquisa vazia não quebra a página e lista artigos sem filtro | *(vazio)* | Abre a página de busca listando os artigos mais recentes (padrão do WordPress), sem erro |
+| pesquisa só com espaços se comporta como pesquisa vazia | `"   "` | Igual à pesquisa vazia |
+| termo com HTML é exibido como texto e não executa script | `<script>alert("xss")</script>` | O termo aparece como **texto** no título, nenhum `alert` é disparado e não há resultados (proteção contra XSS) |
+| termo muito longo informa que não há artigos | `"a"` repetido 300 vezes | Página de busca normal com “nada foi encontrado”, sem erro |
+
+> O teste do bug da lupa **não é um cenário negativo**. Ele verifica o comportamento **correto** (a lupa deveria abrir a busca) e falha porque o site tem um defeito. Veja o próximo arquivo.
 
 Estrutura do arquivo:
 
@@ -192,14 +221,18 @@ Estrutura do arquivo:
 
 #### `tests/e2e/bug-lupa.spec.js`: demonstração do bug da lupa
 
-Reproduz o bug **como um usuário real**, sem o contorno do `prepararBusca()`: abre o blog, mexe o mouse, clica na lupa e espera o campo de pesquisa abrir. Como o campo não abre, o teste falha.
+Reproduz o bug **como um usuário real**, sem o contorno do `prepararBusca()`: abre o blog, mexe o mouse, clica na lupa e espera o campo de pesquisa abrir. O campo não abre, e o teste falha na verificação `o campo de pesquisa deveria abrir`: o elemento `#ast-seach-full-screen-form` continua **oculto** (`hidden`).
 
-**Este teste falha de propósito** enquanto o bug existir, e por isso o `npm test` e a pipeline do GitHub Actions ficam vermelhos:
+**Por que falha (causa raiz):** o blog usa o plugin de performance **LiteSpeed**, que adia o JavaScript do site até o usuário interagir com a página. Mesmo **depois** que o mouse se mexe, os scripts `_jb_static` do tema (responsáveis por ligar a ação de clique à lupa) continuam guardados em `data-src` e **nunca são carregados**. Assim a lupa fica sem ação de clique (o passo *“Lupa tem ação de clique? não”* aparece no relatório) e clicar nela não faz nada. É um defeito do site, não do teste.
 
-| Resultado | O que significa |
+**Como o teste está marcado:** ele usa `test.fail()`, que diz ao Playwright *“este teste deve falhar”*. Assim o bug fica documentado e com evidências, sem deixar o `npm test` e a pipeline vermelhos:
+
+| O que aparece | O que significa |
 |---|---|
-| ❌ Falhou com `o campo de pesquisa deveria abrir` | O bug continua no site. Prints, vídeo e a anotação **bug** ficam no Allure |
-| ✅ Passou | **O site foi corrigido.** Avalie remover o `prepararBusca()` do `HomePage.js` |
+| ✘ no terminal, mas contado em `passed` (no Allure: **passed** com a tag **bug**) | O bug continua no site. É o resultado esperado. Prints, vídeo e a anotação **bug** ficam no relatório |
+| ❌ Falha com `Expected to fail, but passed` | **O site foi corrigido.** Remova o `test.fail()` do teste e avalie remover o `prepararBusca()` do `HomePage.js` |
+
+> **Cuidado:** com `test.fail()`, **qualquer** falha conta como esperada, inclusive o site fora do ar. Se o teste mudar de comportamento, confira no relatório se ele falhou mesmo na etapa `o campo de pesquisa deveria abrir`.
 
 Para rodar só os testes da busca, sem o do bug: `npx playwright test --grep-invert @bug`.
 
@@ -219,7 +252,7 @@ Guarda **onde estão os elementos** (seletores) e **o que dá para fazer** na p�
 | `pesquisar(termo)` | Abre a busca, digita o termo e clica em pesquisar |
 | `fecharBuscaPeloTeclado()` | Aperta `Esc` e confere que a busca fechou |
 
-> **Por que existe o `prepararBusca()`?** O blog usa um plugin de performance (LiteSpeed) que **só carrega o JavaScript do site depois que o usuário mexe o mouse**. Sem esse JavaScript, clicar na lupa não faz nada. O método simula um movimento de mouse, espera os scripts carregarem e garante que a lupa visível tenha a ação de clique. **Se o site trocar de tema/plugin, este é o primeiro método a revisar.**
+> **Por que existe o `prepararBusca()`?** É o contorno do [bug da lupa](#testse2ebug-lupaspecjs-demonstração-do-bug-da-lupa). O plugin LiteSpeed só carrega o JavaScript do site depois que o usuário interage, e mesmo assim os scripts `_jb_static`, que ligam o clique à lupa, nunca são carregados. O método mexe o mouse, espera o LiteSpeed rodar, **carrega à força** os scripts `_jb_static` pendentes e copia a ação de clique para a lupa visível. Sem ele, nenhum cenário de busca conseguiria abrir a lupa. **Se o site trocar de tema/plugin ou o bug for corrigido, este é o primeiro método a revisar.**
 
 #### `tests/pages/SearchResultsPage.js`: página de resultados
 
@@ -230,13 +263,19 @@ Contém apenas **verificações** (métodos começam com `deve…`):
 | `deveRefletirOTermo(termo)` | A URL tem `?s=termo` e o título `h1` mostra o termo |
 | `deveListarArtigosRelacionados(termo)` | Há artigos e o texto deles contém o termo (ignorando acentos e maiúsculas) |
 | `deveInformarAusenciaDeResultados()` | Nenhum artigo e a mensagem de “nada encontrado” aparece |
+| `deveListarArtigosSemFiltro()` | Busca vazia: a página de busca abre e lista artigos, sem “nada encontrado” |
+| `deveExibirTermoComoTexto(termo)` | O termo aparece como texto no título, sem virar `<script>` na página |
 
 #### `tests/data/busca.json`: massa de dados
 
 ```json
 {
   "termoComResultado": "cartão",
-  "termoSemResultado": "zzzxqy987termoinexistente"
+  "termoSemResultado": "zzzxqy987termoinexistente",
+  "termoVazio": "",
+  "termoSomenteEspacos": "   ",
+  "termoComHtml": "<script>alert(\"xss\")</script>",
+  "tamanhoTermoLongo": 300
 }
 ```
 
@@ -291,6 +330,8 @@ Regra prática:
 ## 7. Guia de manutenção
 
 ### 7.1 Um teste começou a falhar. E agora?
+
+> O teste `@bug` (**usuário clica na lupa e o campo de pesquisa abre**) **sempre** mostra ✘ enquanto o bug do site existir, e isso é esperado. Só é problema se ele falhar com `Expected to fail, but passed` (veja [5.1](#testse2ebug-lupaspecjs-demonstração-do-bug-da-lupa)).
 
 1. Rode o teste vendo o navegador: `npx playwright test --headed -g "nome do teste"`.
 2. Abra o relatório (`npm run allure:serve`), veja **em qual passo** falhou, o **print** e o **vídeo**.
@@ -458,7 +499,7 @@ O GitHub Pages precisa ser ativado manualmente no repositório. Sem isso, o job 
 
 | Onde | Como |
 |---|---|
-| **Status geral** | Aba **Actions**: ✅ verde = tudo passou, ❌ vermelho = algo falhou. Clique na execução e no job para ver o log de cada passo |
+| **Status geral** | Aba **Actions**: ✅ verde = tudo passou (inclusive a falha esperada do `@bug`), ❌ vermelho = algo falhou de verdade. Clique na execução e no job para ver o log de cada passo |
 | **Relatório online** (só `main`) | https://carlosrcarletto.github.io/teste-tecnico-agibank-web/ |
 | **Relatórios de qualquer branch** | Aba **Actions** → clique na execução → role até **Artifacts** → baixe `allure-report` ou `playwright-report`. Descompacte e, na raiz do projeto, rode `npx allure open caminho/da/pasta` (Allure) ou `npx playwright show-report caminho/da/pasta` (Playwright) |
 
@@ -483,4 +524,5 @@ O GitHub Pages precisa ser ativado manualmente no repositório. Sem isso, o job 
 | `allure: JAVA_HOME is not set` | Java não instalado | Instale o Java (seção 1) |
 | Vídeo não toca no relatório | Safari não suporta `.webm` / vídeo começa branco | Use Chrome e clique em ▶ |
 | Job `deploy-report` falha com `status: 404` | GitHub Pages não ativado | Settings → Pages → Source: **GitHub Actions** (8.3) |
-| Clicar na lupa não abre a busca | JavaScript do site não carregou | Veja `prepararBusca()` em `HomePage.js` |
+| Clicar na lupa não abre a busca | Bug conhecido do site: os scripts `_jb_static` não carregam | Nos testes o `prepararBusca()` contorna isso. Veja o [bug da lupa](#testse2ebug-lupaspecjs-demonstração-do-bug-da-lupa) |
+| Teste `@bug` falha com `Expected to fail, but passed` | O site corrigiu o bug da lupa | Remova o `test.fail()` de `bug-lupa.spec.js` |
