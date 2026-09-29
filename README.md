@@ -6,7 +6,7 @@ Ferramentas usadas:
 
 - **[Playwright](https://playwright.dev/)**: controla o navegador (clica, digita, confere textos).
 - **[Allure Report](https://allurereport.org/)**: gera um relatório visual com o resultado de cada teste, prints e vídeos.
-- **GitHub Actions**: roda os testes automaticamente a cada push ou pull request.
+- **GitHub Actions**: roda os testes automaticamente a cada push ou pull request e publica o relatório Allure no [GitHub Pages](https://carlosrcarletto.github.io/teste-tecnico-agibank-web/).
 
 Este guia foi escrito para quem **nunca usou Playwright**. Siga as seções na ordem.
 
@@ -21,7 +21,7 @@ Este guia foi escrito para quem **nunca usou Playwright**. Siga as seções na o
 5. [Estrutura do projeto](#5-estrutura-do-projeto)
 6. [Como os testes são organizados (Page Objects)](#6-como-os-testes-são-organizados-page-objects)
 7. [Guia de manutenção](#7-guia-de-manutenção)
-8. [Integração contínua (GitHub Actions)](#8-integração-contínua-github-actions)
+8. [CI/CD (GitHub Actions)](#8-cicd-github-actions)
 9. [Problemas comuns](#9-problemas-comuns)
 
 ---
@@ -143,10 +143,11 @@ Relatório mais simples, que já vem com o Playwright. Útil para abrir o **trac
 teste-tecnico-agibank-web/
 ├── .github/
 │   └── workflows/
-│       └── playwright.yml      → roda os testes no GitHub a cada push/PR
+│       └── playwright.yml      → pipeline CI/CD: roda os testes e publica o relatório
 ├── tests/
 │   ├── e2e/
-│   │   └── busca.spec.js       → OS TESTES: cenários da pesquisa
+│   │   ├── busca.spec.js       → OS TESTES: cenários da pesquisa
+│   │   └── bug-lupa.spec.js    → cenário que demonstra o bug da lupa
 │   ├── pages/
 │   │   ├── HomePage.js         → ações na página inicial (abrir lupa, pesquisar…)
 │   │   └── SearchResultsPage.js→ verificações na página de resultados
@@ -189,6 +190,21 @@ Estrutura do arquivo:
 - `test.beforeEach(...)`: roda **antes de cada teste** (aqui: abre o blog).
 - `test("nome", async ({ page }) => { ... })`: um teste. `page` é a aba do navegador.
 
+#### `tests/e2e/bug-lupa.spec.js`: demonstração do bug da lupa
+
+Reproduz o bug **como um usuário real**, sem o contorno do `prepararBusca()`: abre o blog, mexe o mouse, clica na lupa e espera o campo de pesquisa abrir. Como o campo não abre, o teste falha.
+
+**Este teste falha de propósito** enquanto o bug existir, e por isso o `npm test` e a pipeline do GitHub Actions ficam vermelhos:
+
+| Resultado | O que significa |
+|---|---|
+| ❌ Falhou com `o campo de pesquisa deveria abrir` | O bug continua no site. Prints, vídeo e a anotação **bug** ficam no Allure |
+| ✅ Passou | **O site foi corrigido.** Avalie remover o `prepararBusca()` do `HomePage.js` |
+
+Para rodar só os testes da busca, sem o do bug: `npx playwright test --grep-invert @bug`.
+
+Para rodar só ele: `npx playwright test --grep @bug --headed`.
+
 #### `tests/pages/HomePage.js`: página inicial
 
 Guarda **onde estão os elementos** (seletores) e **o que dá para fazer** na página inicial:
@@ -197,6 +213,8 @@ Guarda **onde estão os elementos** (seletores) e **o que dá para fazer** na p�
 |---|---|
 | `visitar()` | Abre o blog e prepara a lupa para funcionar |
 | `prepararBusca()` | Contorno técnico, veja abaixo |
+| `visitarSemContorno()` | Abre o blog como usuário real, sem o contorno (usado no cenário do bug) |
+| `lupaTemAcaoDeClique()` | Diz se a lupa tem ação de clique ligada (`true`/`false`) |
 | `abrirBusca()` | Clica na lupa e confere que o campo “Digite sua busca” apareceu |
 | `pesquisar(termo)` | Abre a busca, digita o termo e clica em pesquisar |
 | `fecharBuscaPeloTeclado()` | Aperta `Esc` e confere que a busca fechou |
@@ -378,18 +396,78 @@ npm test
 
 ---
 
-## 8. Integração contínua (GitHub Actions)
+## 8. CI/CD (GitHub Actions)
 
-O arquivo `.github/workflows/playwright.yml` faz o GitHub rodar os testes sozinho a cada **push** ou **pull request** para `main`/`master`. Passos:
+O arquivo `.github/workflows/playwright.yml` define a pipeline que o GitHub executa sozinho em um servidor Linux. Ela tem duas etapas (jobs):
 
-1. Baixa o código e instala o Node.js.
-2. `npm ci`: instala as dependências exatamente como no `package-lock.json`.
-3. Instala os navegadores do Playwright.
-4. `npx playwright test`: roda os testes (com até 2 repetições em caso de falha).
-5. Gera o relatório Allure.
-6. Publica `playwright-report` e `allure-report` como **artifacts** (guardados por 30 dias).
+```
+push / pull request / botão "Run workflow"
+            │
+            ▼
+┌──────────────────────────┐        ┌───────────────────────────────┐
+│ test (CI)                │  só na │ deploy-report (CD)            │
+│ roda os testes e gera os │ ─main─▶│ publica o relatório Allure no │
+│ relatórios               │        │ GitHub Pages                  │
+└──────────────────────────┘        └───────────────────────────────┘
+```
 
-**Para ver o resultado:** no GitHub, aba **Actions** → clique na execução → role até **Artifacts** → baixe `allure-report`. Descompacte e, na raiz do projeto, rode `npx allure open caminho/da/pasta/descompactada`.
+### 8.1 Quando a pipeline roda
+
+| Evento | O que acontece |
+|---|---|
+| **push** em qualquer branch | Roda os testes (job `test`) |
+| **push** na `main` | Roda os testes **e** publica o relatório no GitHub Pages |
+| **pull request** para a `main` | Roda os testes, o resultado aparece no próprio PR |
+| **Manual** | Aba **Actions** → *Playwright Tests* → **Run workflow** |
+
+Se você fizer um novo push no mesmo branch enquanto a pipeline anterior ainda roda, a anterior é **cancelada** (opção `concurrency`) para não desperdiçar tempo.
+
+### 8.2 Job `test` (CI: integração contínua)
+
+1. Baixa o código (`actions/checkout`).
+2. Instala o Node.js (`actions/setup-node`) com cache do npm, para acelerar as próximas execuções.
+3. Instala o Java 17 (`actions/setup-java`), necessário para o Allure gerar o HTML.
+4. `npm ci`: instala as dependências exatamente como no `package-lock.json`.
+5. `npx playwright install --with-deps chromium`: instala o navegador.
+6. `npx playwright test`: roda os testes (com até 2 repetições em caso de falha).
+7. `npm run allure:generate`: gera o relatório Allure.
+8. Publica `playwright-report` e `allure-report` como **artifacts** (guardados por 30 dias).
+9. Só na `main`: empacota o `allure-report` para o GitHub Pages.
+
+Os passos 7 a 9 rodam **mesmo se algum teste falhar** (`if: !cancelled()`), justamente para você ter o relatório da falha.
+
+### 8.3 Job `deploy-report` (CD: entrega contínua)
+
+Roda **só na `main`**, depois do job `test`. Publica o relatório Allure como um site no **GitHub Pages**:
+
+**https://carlosrcarletto.github.io/teste-tecnico-agibank-web/**
+
+A cada push na `main` o site é substituído pelo relatório da execução mais recente, e qualquer pessoa com o link pode ver o resultado sem instalar nada.
+
+#### Configuração necessária (fazer uma única vez)
+
+O GitHub Pages precisa ser ativado manualmente no repositório. Sem isso, o job `deploy-report` falha com o erro `Failed to create deployment (status: 404) ... Ensure GitHub Pages has been enabled`.
+
+1. No GitHub, abra o repositório → **Settings** → **Pages** (menu lateral).
+2. Em **Build and deployment → Source**, selecione **GitHub Actions**.
+3. Volte na aba **Actions**, abra a última execução da `main` e clique em **Re-run failed jobs**.
+
+> Se o repositório for **privado**, o GitHub Pages só está disponível em planos pagos (GitHub Pro/Team). Nesse caso use os artifacts (8.4).
+
+### 8.4 Onde ver o resultado
+
+| Onde | Como |
+|---|---|
+| **Status geral** | Aba **Actions**: ✅ verde = tudo passou, ❌ vermelho = algo falhou. Clique na execução e no job para ver o log de cada passo |
+| **Relatório online** (só `main`) | https://carlosrcarletto.github.io/teste-tecnico-agibank-web/ |
+| **Relatórios de qualquer branch** | Aba **Actions** → clique na execução → role até **Artifacts** → baixe `allure-report` ou `playwright-report`. Descompacte e, na raiz do projeto, rode `npx allure open caminho/da/pasta` (Allure) ou `npx playwright show-report caminho/da/pasta` (Playwright) |
+
+### 8.5 Manutenção da pipeline
+
+- **Mudar os branches que disparam a pipeline**: edite a seção `on:` do workflow.
+- **Publicar o relatório a partir de outro branch**: troque `refs/heads/main` pelo branch desejado nas duas condições `if:` do workflow.
+- **Rodar em mais navegadores no CI**: adicione o projeto no `playwright.config.js` (7.6) e troque `chromium` por nada em `npx playwright install --with-deps` (instala todos).
+- **Avisos de versão** (ex.: *“Node.js 20 is deprecated”*): são só alertas. Quando uma action lançar versão nova, atualize o número após o `@` (ex.: `actions/checkout@v4` → `@v5`).
 
 ---
 
@@ -404,4 +482,5 @@ O arquivo `.github/workflows/playwright.yml` faz o GitHub rodar os testes sozinh
 | Relatório abre em branco | Abriu o `index.html` direto | Use `npm run allure:serve` ou `npx playwright show-report` |
 | `allure: JAVA_HOME is not set` | Java não instalado | Instale o Java (seção 1) |
 | Vídeo não toca no relatório | Safari não suporta `.webm` / vídeo começa branco | Use Chrome e clique em ▶ |
+| Job `deploy-report` falha com `status: 404` | GitHub Pages não ativado | Settings → Pages → Source: **GitHub Actions** (8.3) |
 | Clicar na lupa não abre a busca | JavaScript do site não carregou | Veja `prepararBusca()` em `HomePage.js` |

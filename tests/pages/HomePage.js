@@ -16,6 +16,23 @@ class HomePage {
   }
 
   /**
+   * Abre o blog como um usuário real, sem o contorno do prepararBusca():
+   * mexe o mouse e dá tempo para o LiteSpeed carregar o que ele carregaria sozinho.
+   * Usado no cenário que demonstra o bug da lupa.
+   */
+  async visitarSemContorno() {
+    await this.page.goto("/");
+    await expect(this.lupa).toBeVisible();
+    await this.page.mouse.move(200, 300);
+    await this.page.mouse.move(400, 300);
+    await this.page.waitForLoadState("networkidle");
+  }
+
+  async lupaTemAcaoDeClique() {
+    return this.lupa.evaluate((el) => typeof el.onclick === "function");
+  }
+
+  /**
    * O blog adia o JavaScript do tema (LiteSpeed). Os scripts só rodam após uma
    * interação real, e mesmo assim os bundles `_jb_static` (que atribuem o
    * onclick da lupa) ficam em `data-src` sem carregar. Aqui acordamos o
